@@ -1,5 +1,6 @@
 import { tasks, runs } from "@trigger.dev/sdk/v3";
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 
 export const maxDuration = 120;
 
@@ -27,7 +28,32 @@ export async function POST(req: NextRequest) {
       const run = await runs.retrieve(handle.id);
 
       if (run.status === "COMPLETED") {
-        return NextResponse.json(run.output);
+        const output = run.output as { score: number; tier: string; reasoning: string };
+
+        // Save result to Supabase for the authenticated user
+        const supabase = await createClient();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { error: dbError } = await supabase.from("lead_analyses").insert({
+            user_id: session.user.id,
+            company_name: payload.companyName,
+            industry: payload.industry,
+            company_size: payload.companySize,
+            budget: payload.budget,
+            pain_points: payload.painPoints,
+            timeline: payload.timeline,
+            current_solutions: payload.currentSolutions,
+            decision_maker_info: payload.decisionMakerInfo,
+            score: output.score,
+            tier: output.tier,
+            reasoning: output.reasoning,
+          });
+          if (dbError) {
+            console.error("Failed to save lead analysis:", dbError);
+          }
+        }
+
+        return NextResponse.json(output);
       }
 
       if (
