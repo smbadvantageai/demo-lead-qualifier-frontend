@@ -17,6 +17,40 @@ interface LeadPayload {
 
 export async function POST(req: NextRequest) {
   try {
+    const supabase = await createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // ── PLAN ENFORCEMENT ────────────────────────────────────────────────────
+    const { data: sub } = await supabase
+      .from("subscriptions")
+      .select("plan, status")
+      .eq("user_id", session.user.id)
+      .maybeSingle();
+
+    const isPro = sub?.plan === "pro" && sub?.status === "active";
+
+    if (!isPro) {
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+
+      const { count } = await supabase
+        .from("lead_analyses")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .gte("created_at", todayStart.toISOString());
+
+      if ((count ?? 0) >= 2) {
+        return NextResponse.json(
+          { error: "Daily limit reached", upgradeRequired: true },
+          { status: 429 }
+        );
+      }
+    }
+    // ── END ENFORCEMENT ──────────────────────────────────────────────────────
+
     const payload: LeadPayload = await req.json();
 
     // Trigger the task

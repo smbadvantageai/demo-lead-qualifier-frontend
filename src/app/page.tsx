@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getLeadHistory } from "@/lib/actions/history";
+import { getSubscriptionStatus } from "@/lib/actions/subscription";
 import LeadQualifierForm from "./LeadQualifierForm";
 
 export default async function HomePage() {
@@ -13,12 +14,16 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  const history = await getLeadHistory();
+  const [history, subscriptionStatus] = await Promise.all([
+    getLeadHistory(),
+    getSubscriptionStatus(),
+  ]);
 
   return (
     <LeadQualifierForm
       history={history}
       userEmail={session.user.email!}
+      subscriptionStatus={subscriptionStatus}
     />
   );
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import type { LeadAnalysis } from "@/lib/actions/history";
+import type { SubscriptionStatus } from "@/lib/actions/subscription";
 
 interface LeadPayload {
   companyName: string;
@@ -377,14 +378,16 @@ function HistoryPanel({ history }: { history: LeadAnalysis[] }) {
 interface Props {
   history: LeadAnalysis[];
   userEmail: string;
+  subscriptionStatus: SubscriptionStatus;
 }
 
-export default function LeadQualifierForm({ history, userEmail }: Props) {
+export default function LeadQualifierForm({ history, userEmail, subscriptionStatus }: Props) {
   const router = useRouter();
   const [form, setForm] = useState<LeadPayload>(EMPTY);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<LeadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showUpgradeBanner, setShowUpgradeBanner] = useState(false);
 
   function handleChange(key: keyof LeadPayload, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -408,6 +411,15 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+
+      if (res.status === 429) {
+        const data = await res.json();
+        if (data.upgradeRequired) {
+          setShowUpgradeBanner(true);
+          setLoading(false);
+          return;
+        }
+      }
 
       if (!res.ok) {
         const data = await res.json();
@@ -498,16 +510,55 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
               flexShrink: 0,
             }}
           >
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: "11px",
-                color: "var(--text-muted)",
-                letterSpacing: "0.5px",
-              }}
-            >
-              {userEmail}
-            </span>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: "11px",
+                  color: "var(--text-muted)",
+                  letterSpacing: "0.5px",
+                }}
+              >
+                {userEmail}
+              </span>
+              {subscriptionStatus.isPro && (
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: "9px",
+                    letterSpacing: "2px",
+                    textTransform: "uppercase",
+                    color: "var(--amber)",
+                    background: "rgba(251,191,36,0.1)",
+                    border: "1px solid rgba(251,191,36,0.3)",
+                    borderRadius: "4px",
+                    padding: "2px 7px",
+                  }}
+                >
+                  PRO
+                </span>
+              )}
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              {!subscriptionStatus.isPro && (
+                <a
+                  href="/upgrade"
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: "10px",
+                    letterSpacing: "1.5px",
+                    textTransform: "uppercase",
+                    color: "var(--amber)",
+                    background: "rgba(251,191,36,0.08)",
+                    border: "1px solid rgba(251,191,36,0.25)",
+                    borderRadius: "4px",
+                    padding: "4px 10px",
+                    textDecoration: "none",
+                  }}
+                >
+                  Upgrade
+                </a>
+              )}
             <button
               onClick={handleSignOut}
               style={{
@@ -534,9 +585,51 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
             >
               Sign Out
             </button>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Usage counter — free users only */}
+      {!subscriptionStatus.isPro && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "12px 16px",
+            background: "var(--surface)",
+            border: `1px solid ${subscriptionStatus.todayCount >= 2 ? "rgba(239,68,68,0.25)" : "var(--border)"}`,
+            borderRadius: "8px",
+            marginBottom: "32px",
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: "12px",
+              color: subscriptionStatus.todayCount >= 2 ? "#ef4444" : "var(--text-muted)",
+            }}
+          >
+            {subscriptionStatus.todayCount} of 2 free analyses used today
+          </span>
+          {subscriptionStatus.todayCount >= 1 && (
+            <a
+              href="/upgrade"
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: "11px",
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+                color: "var(--amber)",
+                textDecoration: "none",
+              }}
+            >
+              Upgrade →
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Form */}
       <form onSubmit={handleSubmit}>
@@ -594,14 +687,14 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
         <div style={{ marginTop: "32px" }}>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || (!subscriptionStatus.isPro && subscriptionStatus.todayCount >= 2)}
             style={{
               display: "flex",
               alignItems: "center",
               gap: "10px",
-              background: loading ? "rgba(251,191,36,0.1)" : "var(--amber)",
-              color: loading ? "var(--amber)" : "#08080f",
-              border: loading ? "1px solid rgba(251,191,36,0.3)" : "none",
+              background: loading ? "rgba(251,191,36,0.1)" : (!subscriptionStatus.isPro && subscriptionStatus.todayCount >= 2) ? "rgba(255,255,255,0.05)" : "var(--amber)",
+              color: loading ? "var(--amber)" : (!subscriptionStatus.isPro && subscriptionStatus.todayCount >= 2) ? "var(--text-muted)" : "#08080f",
+              border: (loading || (!subscriptionStatus.isPro && subscriptionStatus.todayCount >= 2)) ? "1px solid rgba(255,255,255,0.08)" : "none",
               borderRadius: "8px",
               padding: "14px 32px",
               fontSize: "14px",
@@ -609,7 +702,7 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
               letterSpacing: "1px",
               fontFamily: "'JetBrains Mono', monospace",
               textTransform: "uppercase",
-              cursor: loading ? "not-allowed" : "pointer",
+              cursor: (loading || (!subscriptionStatus.isPro && subscriptionStatus.todayCount >= 2)) ? "not-allowed" : "pointer",
               transition: "all 0.2s",
               minWidth: "180px",
               justifyContent: "center",
@@ -651,6 +744,60 @@ export default function LeadQualifierForm({ history, userEmail }: Props) {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {/* Upgrade banner — shown when daily limit is hit */}
+      {showUpgradeBanner && (
+        <div
+          style={{
+            marginTop: "32px",
+            padding: "20px 24px",
+            background: "rgba(251,191,36,0.05)",
+            border: "1px solid rgba(251,191,36,0.3)",
+            borderRadius: "12px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: "11px",
+                letterSpacing: "2px",
+                textTransform: "uppercase",
+                color: "var(--amber)",
+                marginBottom: "4px",
+              }}
+            >
+              Daily limit reached
+            </div>
+            <p style={{ fontSize: "14px", color: "var(--text)", margin: 0, lineHeight: 1.5 }}>
+              You have used your 2 free analyses for today. Upgrade to Pro for unlimited qualifications.
+            </p>
+          </div>
+          <a
+            href="/upgrade"
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: "11px",
+              letterSpacing: "1.5px",
+              textTransform: "uppercase",
+              color: "#08080f",
+              background: "var(--amber)",
+              borderRadius: "6px",
+              padding: "10px 20px",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+            }}
+          >
+            Upgrade to Pro →
+          </a>
         </div>
       )}
 

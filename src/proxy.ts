@@ -13,8 +13,9 @@ export async function proxy(request: NextRequest) {
       data: { session },
     } = await supabase.auth.getSession();
 
-    // Redirect unauthenticated users away from the main app
-    if (pathname === "/" && !session) {
+    // Redirect unauthenticated users away from protected pages
+    const PROTECTED = ["/", "/upgrade", "/success"];
+    if (PROTECTED.includes(pathname) && !session) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
 
